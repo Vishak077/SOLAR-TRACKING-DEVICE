@@ -1,0 +1,1360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dual-Axis Solar Tracker | Arduino Project</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --black: #050608;
+  --dark: #0a0c10;
+  --panel: #0f1117;
+  --border: #ffffff0f;
+  --border-hot: #f59e0b40;
+  --amber: #f59e0b;
+  --amber-dim: #f59e0b60;
+  --amber-glow: #fbbf2420;
+  --teal: #2dd4bf;
+  --teal-dim: #2dd4bf30;
+  --white: #f5f3ee;
+  --muted: #6b7280;
+  --font-display: 'Syne', sans-serif;
+  --font-mono: 'Space Mono', monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--black);
+  color: var(--white);
+  font-family: var(--font-display);
+  overflow-x: hidden;
+  cursor: none;
+}
+
+/* Custom cursor */
+#cursor {
+  width: 10px; height: 10px;
+  background: var(--amber);
+  border-radius: 50%;
+  position: fixed;
+  pointer-events: none;
+  z-index: 9999;
+  transform: translate(-50%, -50%);
+  transition: transform 0.1s, width 0.2s, height 0.2s, opacity 0.2s;
+  mix-blend-mode: difference;
+}
+#cursor-ring {
+  width: 36px; height: 36px;
+  border: 1px solid var(--amber-dim);
+  border-radius: 50%;
+  position: fixed;
+  pointer-events: none;
+  z-index: 9998;
+  transform: translate(-50%, -50%);
+  transition: transform 0.18s ease, width 0.2s, height 0.2s;
+}
+body:hover #cursor { opacity: 1; }
+
+/* Grid overlay */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(var(--border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border) 1px, transparent 1px);
+  background-size: 60px 60px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Ambient glow */
+body::after {
+  content: '';
+  position: fixed;
+  top: -200px; left: 50%; transform: translateX(-50%);
+  width: 800px; height: 600px;
+  background: radial-gradient(ellipse, #f59e0b08 0%, transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ===================== HERO ===================== */
+#hero {
+  position: relative;
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  padding: 0 80px;
+  gap: 60px;
+  z-index: 1;
+}
+
+.hero-left { padding-top: 80px; }
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 3px;
+  color: var(--amber);
+  text-transform: uppercase;
+  margin-bottom: 24px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  opacity: 0;
+  animation: fadeUp 0.8s 0.2s forwards;
+}
+.eyebrow::before {
+  content: '';
+  width: 32px; height: 1px;
+  background: var(--amber);
+}
+
+h1 {
+  font-size: clamp(48px, 6vw, 84px);
+  font-weight: 800;
+  line-height: 0.95;
+  letter-spacing: -2px;
+  margin-bottom: 28px;
+  opacity: 0;
+  animation: fadeUp 0.8s 0.35s forwards;
+}
+
+h1 span { color: var(--amber); }
+
+.hero-desc {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.9;
+  color: var(--muted);
+  max-width: 420px;
+  margin-bottom: 48px;
+  opacity: 0;
+  animation: fadeUp 0.8s 0.5s forwards;
+}
+
+.hero-ctas {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  opacity: 0;
+  animation: fadeUp 0.8s 0.65s forwards;
+}
+
+.btn-primary {
+  background: var(--amber);
+  color: var(--black);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  padding: 14px 28px;
+  border: none;
+  cursor: none;
+  text-decoration: none;
+  text-transform: uppercase;
+  transition: transform 0.15s, box-shadow 0.15s;
+  display: inline-block;
+}
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 32px #f59e0b30;
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--white);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 1px;
+  padding: 13px 28px;
+  border: 1px solid var(--border);
+  cursor: none;
+  text-decoration: none;
+  text-transform: uppercase;
+  transition: border-color 0.2s, color 0.2s;
+  display: inline-block;
+}
+.btn-ghost:hover { border-color: var(--amber-dim); color: var(--amber); }
+
+/* Hero canvas */
+.hero-right {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  animation: fadeIn 1.2s 0.8s forwards;
+}
+
+#tracker-canvas {
+  width: 100%;
+  max-width: 480px;
+  aspect-ratio: 1;
+}
+
+/* Stats strip */
+.stats-strip {
+  position: absolute;
+  bottom: 40px; left: 80px; right: 80px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  border-top: 1px solid var(--border);
+  padding-top: 28px;
+  opacity: 0;
+  animation: fadeUp 0.8s 1s forwards;
+}
+.stat { padding-right: 32px; }
+.stat-num {
+  font-size: 36px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--amber);
+  margin-bottom: 4px;
+}
+.stat-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+/* ===================== HOW IT WORKS ===================== */
+#how {
+  position: relative;
+  z-index: 1;
+  padding: 140px 80px;
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 80px;
+}
+
+.section-tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 3px;
+  color: var(--amber);
+  text-transform: uppercase;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  height: fit-content;
+  border-left: 1px solid var(--amber-dim);
+  padding-left: 16px;
+}
+
+.how-content h2 {
+  font-size: clamp(36px, 4vw, 56px);
+  font-weight: 800;
+  letter-spacing: -1px;
+  margin-bottom: 20px;
+  line-height: 1;
+}
+
+.how-content p {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.9;
+  color: var(--muted);
+  max-width: 560px;
+  margin-bottom: 60px;
+}
+
+.steps-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+}
+
+.step-card {
+  background: var(--dark);
+  padding: 32px 28px;
+  transition: background 0.2s;
+  position: relative;
+  overflow: hidden;
+}
+.step-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: var(--amber);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.3s;
+}
+.step-card:hover::before { transform: scaleX(1); }
+.step-card:hover { background: #0f1117; }
+
+.step-n {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--amber);
+  letter-spacing: 2px;
+  margin-bottom: 20px;
+}
+.step-card h3 {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 12px;
+  line-height: 1.2;
+}
+.step-card p {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.8;
+  margin: 0;
+}
+
+/* ===================== HARDWARE ===================== */
+#hardware {
+  position: relative;
+  z-index: 1;
+  padding: 0 80px 140px;
+}
+
+.hardware-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 48px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 28px;
+}
+.hardware-header h2 {
+  font-size: clamp(36px, 4vw, 56px);
+  font-weight: 800;
+  letter-spacing: -1px;
+  line-height: 1;
+}
+.hardware-header span {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.components-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  background: var(--border);
+}
+
+.component-card {
+  background: var(--dark);
+  padding: 28px;
+  position: relative;
+  transition: background 0.2s;
+}
+.component-card:hover { background: var(--panel); }
+
+.comp-icon {
+  width: 48px; height: 48px;
+  border: 1px solid var(--border-hot);
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 20px;
+  font-size: 22px;
+}
+
+.comp-name {
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.comp-qty {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--amber);
+  margin-bottom: 10px;
+  letter-spacing: 1px;
+}
+.comp-note {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+/* ===================== WIRING ===================== */
+#wiring {
+  position: relative;
+  z-index: 1;
+  padding: 0 80px 140px;
+}
+
+#wiring h2 {
+  font-size: clamp(36px, 4vw, 56px);
+  font-weight: 800;
+  letter-spacing: -1px;
+  margin-bottom: 48px;
+}
+
+.wiring-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: var(--border);
+}
+
+.wiring-panel {
+  background: var(--dark);
+  padding: 36px;
+}
+
+.wiring-panel h3 {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 3px;
+  color: var(--amber);
+  text-transform: uppercase;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.pin-table { width: 100%; border-collapse: collapse; }
+.pin-table tr { border-bottom: 1px solid var(--border); }
+.pin-table tr:last-child { border-bottom: none; }
+.pin-table td {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 10px 0;
+  vertical-align: top;
+}
+.pin-table td:first-child {
+  color: var(--amber);
+  font-weight: 700;
+  width: 60px;
+  letter-spacing: 1px;
+}
+.pin-table td:last-child { color: var(--muted); }
+
+.wire-diagram {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 2;
+  color: var(--muted);
+  white-space: pre;
+  padding: 8px 0;
+}
+.wire-diagram .hl { color: var(--amber); }
+.wire-diagram .hl2 { color: var(--teal); }
+
+/* ===================== CODE ===================== */
+#code {
+  position: relative;
+  z-index: 1;
+  padding: 0 80px 140px;
+}
+
+#code h2 {
+  font-size: clamp(36px, 4vw, 56px);
+  font-weight: 800;
+  letter-spacing: -1px;
+  margin-bottom: 12px;
+}
+#code .sub {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 40px;
+}
+
+.code-window {
+  background: #080b0f;
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.code-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  background: #0a0d12;
+}
+
+.code-dots { display: flex; gap: 8px; }
+.dot {
+  width: 12px; height: 12px; border-radius: 50%;
+}
+.dot-r { background: #ff5f57; }
+.dot-y { background: #febc2e; }
+.dot-g { background: #28c840; }
+
+.code-filename {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 1px;
+}
+
+.code-copy {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 1px;
+  padding: 4px 12px;
+  cursor: none;
+  text-transform: uppercase;
+  transition: border-color 0.2s, color 0.2s;
+}
+.code-copy:hover { border-color: var(--amber-dim); color: var(--amber); }
+
+pre {
+  padding: 28px 28px;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.9;
+  max-height: 520px;
+  overflow-y: auto;
+}
+
+pre::-webkit-scrollbar { width: 4px; height: 4px; }
+pre::-webkit-scrollbar-track { background: transparent; }
+pre::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.kw { color: #c792ea; }
+.fn { color: #82aaff; }
+.cm { color: #546e7a; font-style: italic; }
+.str { color: #c3e88d; }
+.num { color: #f78c6c; }
+.var2 { color: var(--teal); }
+.cst { color: var(--amber); }
+
+/* ===================== SIMULATION ===================== */
+#simulation {
+  position: relative;
+  z-index: 1;
+  padding: 0 80px 140px;
+}
+
+.sim-wrapper {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+}
+
+.sim-preview {
+  background: var(--dark);
+  padding: 0;
+  position: relative;
+  overflow: hidden;
+  min-height: 420px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.sim-screen {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, #050a02, #020508);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sim-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 3px;
+  color: var(--amber);
+  text-transform: uppercase;
+  text-align: center;
+}
+
+.sim-canvas-mini { width: 260px; height: 260px; }
+
+.sim-bar {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  background: #0a0c10ee;
+  border-top: 1px solid var(--border);
+  backdrop-filter: blur(8px);
+}
+
+.sim-bar-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 1px;
+}
+
+.sim-sidebar {
+  background: var(--panel);
+  padding: 36px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.sim-sidebar h3 {
+  font-size: 22px;
+  font-weight: 800;
+  margin-bottom: 8px;
+  line-height: 1.2;
+}
+
+.sim-sidebar p {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.8;
+}
+
+.feature-list { list-style: none; }
+.feature-list li {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.feature-list li::before {
+  content: '';
+  width: 6px; height: 6px;
+  background: var(--amber);
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.feature-list li:last-child { border-bottom: none; }
+
+/* ===================== FOOTER ===================== */
+footer {
+  position: relative;
+  z-index: 1;
+  padding: 60px 80px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.footer-brand {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+}
+.footer-brand span { color: var(--amber); }
+
+.footer-links {
+  display: flex;
+  gap: 32px;
+}
+.footer-links a {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--muted);
+  text-decoration: none;
+  text-transform: uppercase;
+  transition: color 0.2s;
+  cursor: none;
+}
+.footer-links a:hover { color: var(--amber); }
+
+.footer-credit {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 1px;
+}
+
+/* ===================== ANIMATIONS ===================== */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes pulse-ring {
+  0% { transform: scale(1); opacity: 0.4; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+
+.scroll-reveal {
+  opacity: 0;
+  transform: translateY(32px);
+  transition: opacity 0.7s ease, transform 0.7s ease;
+}
+.scroll-reveal.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* nav */
+nav {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 80px;
+  background: linear-gradient(to bottom, var(--black), transparent);
+}
+
+.nav-logo {
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  text-decoration: none;
+  color: var(--white);
+  cursor: none;
+}
+.nav-logo span { color: var(--amber); }
+
+.nav-links {
+  display: flex;
+  gap: 40px;
+}
+.nav-links a {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--muted);
+  text-decoration: none;
+  text-transform: uppercase;
+  transition: color 0.2s;
+  cursor: none;
+}
+.nav-links a:hover { color: var(--amber); }
+
+.nav-pill {
+  background: var(--amber-glow);
+  border: 1px solid var(--amber-dim);
+  color: var(--amber);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  padding: 8px 18px;
+  text-decoration: none;
+  cursor: none;
+  transition: background 0.2s;
+}
+.nav-pill:hover { background: var(--amber); color: var(--black); }
+
+/* mobile */
+@media (max-width: 900px) {
+  #hero { grid-template-columns: 1fr; padding: 120px 24px 60px; }
+  .hero-right { display: none; }
+  .stats-strip { position: static; grid-template-columns: repeat(2,1fr); margin-top: 48px; }
+  #how { grid-template-columns: 1fr; padding: 80px 24px; gap: 24px; }
+  .section-tag { writing-mode: horizontal-tb; transform: none; }
+  .steps-grid { grid-template-columns: 1fr; }
+  #hardware, #wiring, #code, #simulation { padding-left: 24px; padding-right: 24px; }
+  .components-grid { grid-template-columns: repeat(2,1fr); }
+  .wiring-grid { grid-template-columns: 1fr; }
+  .sim-wrapper { grid-template-columns: 1fr; }
+  nav { padding: 16px 24px; }
+  .nav-links { display: none; }
+  footer { flex-direction: column; gap: 24px; padding: 40px 24px; text-align: center; }
+  .footer-links { flex-direction: column; gap: 16px; }
+}
+</style>
+</head>
+<body>
+
+<div id="cursor"></div>
+<div id="cursor-ring"></div>
+
+<!-- NAV -->
+<nav>
+  <a href="#" class="nav-logo">Solar<span>Tracker</span></a>
+  <div class="nav-links">
+    <a href="#how">How It Works</a>
+    <a href="#hardware">Hardware</a>
+    <a href="#code">Code</a>
+    <a href="#simulation">Simulation</a>
+  </div>
+  <a href="simulation/index.html" class="nav-pill">Live Demo</a>
+</nav>
+
+<!-- HERO -->
+<section id="hero">
+  <div class="hero-left">
+    <div class="eyebrow">Arduino Project &mdash; Mangaluru, India</div>
+    <h1>Dual<br>Axis<br><span>Solar</span><br>Tracker</h1>
+    <p class="hero-desc">
+      A 3D-printed, Arduino-powered system that tracks the sun across both horizontal and vertical axes — using four LDR sensors and two servo motors to maximise solar energy harvest by up to 35%.
+    </p>
+    <div class="hero-ctas">
+      <a href="simulation/index.html" class="btn-primary">Open Simulation</a>
+      <a href="https://github.com/YOUR_USERNAME/solar-tracker" class="btn-ghost">GitHub Repo</a>
+    </div>
+  </div>
+
+  <div class="hero-right">
+    <canvas id="tracker-canvas" width="480" height="480"></canvas>
+  </div>
+
+  <div class="stats-strip">
+    <div class="stat">
+      <div class="stat-num">+35%</div>
+      <div class="stat-label">Energy Gain</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num">2</div>
+      <div class="stat-label">Servo Axes</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num">4</div>
+      <div class="stat-label">LDR Sensors</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num">₹800</div>
+      <div class="stat-label">Build Cost</div>
+    </div>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section id="how">
+  <div class="section-tag">How It Works</div>
+  <div class="how-content scroll-reveal">
+    <h2>Closed-loop<br>light tracking</h2>
+    <p>
+      Four LDR sensors compare light intensity at each corner of the panel. The Arduino reads all four simultaneously, calculates the differential, and nudges the servos in the direction of greater brightness — converging on perfect alignment with the sun.
+    </p>
+    <div class="steps-grid">
+      <div class="step-card">
+        <div class="step-n">STEP 01</div>
+        <h3>Sense</h3>
+        <p>Four LDR sensors at the panel corners read ambient light intensity as analog voltages (0–1023) via voltage dividers.</p>
+      </div>
+      <div class="step-card">
+        <div class="step-n">STEP 02</div>
+        <h3>Compare</h3>
+        <p>Arduino averages top vs bottom for tilt error, and left vs right for pan error. A 15-unit deadband prevents jitter.</p>
+      </div>
+      <div class="step-card">
+        <div class="step-n">STEP 03</div>
+        <h3>Correct</h3>
+        <p>Servo positions increment 1° per cycle toward the brighter side — smooth, stable tracking that locks onto the sun.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- HARDWARE -->
+<section id="hardware">
+  <div class="hardware-header scroll-reveal">
+    <h2>Hardware<br>Components</h2>
+    <span>Est. cost ₹600 – ₹900</span>
+  </div>
+  <div class="components-grid scroll-reveal">
+    <div class="component-card">
+      <div class="comp-icon">⚡</div>
+      <div class="comp-name">Arduino UNO R3</div>
+      <div class="comp-qty">QTY: 1</div>
+      <div class="comp-note">Main microcontroller. Handles sensor reads, servo signals, and serial output.</div>
+    </div>
+    <div class="component-card">
+      <div class="comp-icon">🔄</div>
+      <div class="comp-name">SG90 Micro Servo</div>
+      <div class="comp-qty">QTY: 2</div>
+      <div class="comp-note">One for pan axis, one for tilt. 180° range, 1.8 kg·cm torque.</div>
+    </div>
+    <div class="component-card">
+      <div class="comp-icon">👁</div>
+      <div class="comp-name">LDR GL5528</div>
+      <div class="comp-qty">QTY: 4</div>
+      <div class="comp-note">Light-dependent resistors. One at each panel corner for directional sensing.</div>
+    </div>
+    <div class="component-card">
+      <div class="comp-icon">☀️</div>
+      <div class="comp-name">Solar Panel</div>
+      <div class="comp-qty">QTY: 1</div>
+      <div class="comp-note">5V / 1W mini panel. Mounts on the 3D-printed tilt bracket.</div>
+    </div>
+    <div class="component-card">
+      <div class="comp-icon">⚙️</div>
+      <div class="comp-name">10kΩ Resistors</div>
+      <div class="comp-qty">QTY: 4</div>
+      <div class="comp-note">Voltage divider pull-downs for each LDR sensor circuit.</div>
+    </div>
+    <div class="component-card">
+      <div class="comp-icon">🧩</div>
+      <div class="comp-name">Breadboard</div>
+      <div class="comp-qty">QTY: 1</div>
+      <div class="comp-note">Half or full size for prototyping the LDR and power circuits.</div>
+    </div>
+    <div class="component-card">
+      <div class="comp-icon">🖨</div>
+      <div class="comp-name">3D Printed Frame</div>
+      <div class="comp-qty">5 PARTS</div>
+      <div class="comp-note">Pan-tilt mount, base, and panel holder. PLA, 20% infill.</div>
+    </div>
+    <div class="component-card">
+      <div class="comp-icon">🔌</div>
+      <div class="comp-name">Jumper Wires</div>
+      <div class="comp-qty">~20 PCS</div>
+      <div class="comp-note">Male-to-male for breadboard connections and servo signal lines.</div>
+    </div>
+  </div>
+</section>
+
+<!-- WIRING -->
+<section id="wiring">
+  <h2 class="scroll-reveal">Wiring<br>Diagram</h2>
+  <div class="wiring-grid scroll-reveal">
+    <div class="wiring-panel">
+      <h3>Arduino Pin Map</h3>
+      <table class="pin-table">
+        <tr><td>5V</td><td>LDR power rail + both servo red wires</td></tr>
+        <tr><td>GND</td><td>Common ground — breadboard, servos</td></tr>
+        <tr><td>A0</td><td>LDR NW (top-left) + 10kΩ to GND</td></tr>
+        <tr><td>A1</td><td>LDR NE (top-right) + 10kΩ to GND</td></tr>
+        <tr><td>A2</td><td>LDR SW (bottom-left) + 10kΩ to GND</td></tr>
+        <tr><td>A3</td><td>LDR SE (bottom-right) + 10kΩ to GND</td></tr>
+        <tr><td>D9</td><td>Pan servo — signal (orange wire)</td></tr>
+        <tr><td>D10</td><td>Tilt servo — signal (orange wire)</td></tr>
+      </table>
+    </div>
+    <div class="wiring-panel">
+      <h3>LDR Voltage Divider (×4)</h3>
+      <div class="wire-diagram"><span class="hl">5V</span> ─────────┬──── <span class="hl2">LDR</span> ──── <span class="hl">A0</span>
+          │
+         (↕ resistance
+          drops with light)
+          │
+       <span class="hl">10kΩ</span>
+          │
+        <span class="hl">GND</span>
+
+Higher light → lower LDR resistance
+→ higher voltage at A0 → brighter reading
+Range: 0 (dark) to 1023 (full sun)</div>
+    </div>
+  </div>
+</section>
+
+<!-- CODE -->
+<section id="code">
+  <h2 class="scroll-reveal">Arduino<br>Source Code</h2>
+  <p class="sub scroll-reveal">Full production code — upload directly to your UNO.</p>
+  <div class="code-window scroll-reveal">
+    <div class="code-titlebar">
+      <div class="code-dots">
+        <div class="dot dot-r"></div>
+        <div class="dot dot-y"></div>
+        <div class="dot dot-g"></div>
+      </div>
+      <span class="code-filename">solar_tracker.ino</span>
+      <button class="code-copy" onclick="copyCode(this)">Copy Code</button>
+    </div>
+    <pre id="code-block"><span class="cm">// ============================================================
+//  Dual-Axis Solar Tracker
+//  Board  : Arduino UNO R3
+//  Built  : Mangaluru, Karnataka, India
+// ============================================================</span>
+
+<span class="kw">#include</span> <span class="str">&lt;Servo.h&gt;</span>
+
+<span class="cm">// Servo objects</span>
+<span class="var2">Servo</span> panServo;
+<span class="var2">Servo</span> tiltServo;
+
+<span class="cm">// Pin definitions</span>
+<span class="kw">const int</span> <span class="cst">LDR_NW</span> = <span class="num">A0</span>;
+<span class="kw">const int</span> <span class="cst">LDR_NE</span> = <span class="num">A1</span>;
+<span class="kw">const int</span> <span class="cst">LDR_SW</span> = <span class="num">A2</span>;
+<span class="kw">const int</span> <span class="cst">LDR_SE</span> = <span class="num">A3</span>;
+<span class="kw">const int</span> <span class="cst">PAN_PIN</span>  = <span class="num">9</span>;
+<span class="kw">const int</span> <span class="cst">TILT_PIN</span> = <span class="num">10</span>;
+
+<span class="cm">// Config</span>
+<span class="kw">const int</span> <span class="cst">SERVO_MIN</span>  = <span class="num">10</span>;
+<span class="kw">const int</span> <span class="cst">SERVO_MAX</span>  = <span class="num">170</span>;
+<span class="kw">const int</span> <span class="cst">THRESHOLD</span>  = <span class="num">15</span>;
+<span class="kw">const int</span> <span class="cst">SERVO_STEP</span> = <span class="num">1</span>;
+<span class="kw">const int</span> <span class="cst">LOOP_DELAY</span> = <span class="num">20</span>;
+
+<span class="kw">int</span> panPos  = <span class="num">90</span>;
+<span class="kw">int</span> tiltPos = <span class="num">90</span>;
+
+<span class="fn">void</span> <span class="fn">setup</span>() {
+  Serial.<span class="fn">begin</span>(<span class="num">9600</span>);
+  panServo.<span class="fn">attach</span>(<span class="cst">PAN_PIN</span>);
+  tiltServo.<span class="fn">attach</span>(<span class="cst">TILT_PIN</span>);
+  panServo.<span class="fn">write</span>(panPos);
+  tiltServo.<span class="fn">write</span>(tiltPos);
+  Serial.<span class="fn">println</span>(<span class="str">"Solar Tracker Ready"</span>);
+}
+
+<span class="fn">void</span> <span class="fn">loop</span>() {
+  <span class="kw">int</span> nw = analogRead(<span class="cst">LDR_NW</span>);
+  <span class="kw">int</span> ne = analogRead(<span class="cst">LDR_NE</span>);
+  <span class="kw">int</span> sw = analogRead(<span class="cst">LDR_SW</span>);
+  <span class="kw">int</span> se = analogRead(<span class="cst">LDR_SE</span>);
+
+  <span class="kw">int</span> avgTop    = (nw + ne) / <span class="num">2</span>;
+  <span class="kw">int</span> avgBottom = (sw + se) / <span class="num">2</span>;
+  <span class="kw">int</span> avgLeft   = (nw + sw) / <span class="num">2</span>;
+  <span class="kw">int</span> avgRight  = (ne + se) / <span class="num">2</span>;
+
+  <span class="kw">int</span> tiltDiff = avgTop - avgBottom;
+  <span class="kw">int</span> panDiff  = avgLeft - avgRight;
+
+  <span class="cm">// Tilt correction</span>
+  <span class="kw">if</span> (abs(tiltDiff) > <span class="cst">THRESHOLD</span>) {
+    tiltPos = constrain(
+      tiltPos + (tiltDiff > <span class="num">0</span> ? <span class="cst">SERVO_STEP</span> : -<span class="cst">SERVO_STEP</span>),
+      <span class="cst">SERVO_MIN</span>, <span class="cst">SERVO_MAX</span>
+    );
+    tiltServo.<span class="fn">write</span>(tiltPos);
+  }
+
+  <span class="cm">// Pan correction</span>
+  <span class="kw">if</span> (abs(panDiff) > <span class="cst">THRESHOLD</span>) {
+    panPos = constrain(
+      panPos + (panDiff > <span class="num">0</span> ? -<span class="cst">SERVO_STEP</span> : <span class="cst">SERVO_STEP</span>),
+      <span class="cst">SERVO_MIN</span>, <span class="cst">SERVO_MAX</span>
+    );
+    panServo.<span class="fn">write</span>(panPos);
+  }
+
+  Serial.<span class="fn">print</span>(<span class="str">"NW:"</span>); Serial.<span class="fn">print</span>(nw);
+  Serial.<span class="fn">print</span>(<span class="str">" NE:"</span>); Serial.<span class="fn">print</span>(ne);
+  Serial.<span class="fn">print</span>(<span class="str">" PAN:"</span>); Serial.<span class="fn">print</span>(panPos);
+  Serial.<span class="fn">print</span>(<span class="str">"° TILT:"</span>); Serial.<span class="fn">print</span>(tiltPos);
+  Serial.<span class="fn">println</span>(<span class="str">"°"</span>);
+
+  <span class="fn">delay</span>(<span class="cst">LOOP_DELAY</span>);
+}</pre>
+  </div>
+</section>
+
+<!-- SIMULATION -->
+<section id="simulation">
+  <div class="sim-wrapper scroll-reveal">
+    <div class="sim-preview">
+      <div class="sim-screen">
+        <canvas class="sim-canvas-mini" id="mini-canvas" width="260" height="260"></canvas>
+      </div>
+      <div class="sim-bar">
+        <span class="sim-bar-label" id="mini-status">● AUTO TRACKING ACTIVE</span>
+        <a href="simulation/index.html" class="btn-primary" style="font-size:11px;padding:10px 20px">Open Full Simulation →</a>
+      </div>
+    </div>
+    <div class="sim-sidebar">
+      <div>
+        <h3>Interactive<br>Simulation</h3>
+        <p>Full browser-based simulation of the hardware — no Arduino required. Runs the exact tracking algorithm in real-time.</p>
+      </div>
+      <ul class="feature-list">
+        <li>Sun position for 13°N latitude</li>
+        <li>Live LDR sensor readouts</li>
+        <li>Servo angle visualisation</li>
+        <li>Power output curve</li>
+        <li>AUTO / MANUAL / SCAN modes</li>
+        <li>Arduino serial log simulation</li>
+      </ul>
+      <a href="simulation/index.html" class="btn-primary" style="text-align:center">Launch Simulation</a>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-brand">Solar<span>Tracker</span></div>
+  <div class="footer-links">
+    <a href="https://github.com/YOUR_USERNAME/solar-tracker">GitHub</a>
+    <a href="simulation/index.html">Simulation</a>
+    <a href="#code">Code</a>
+    <a href="#hardware">Hardware</a>
+  </div>
+  <div class="footer-credit">Made in Mangaluru ☀️</div>
+</footer>
+
+<script>
+/* ---- Cursor ---- */
+const cur = document.getElementById('cursor');
+const ring = document.getElementById('cursor-ring');
+let mx=0,my=0,rx=0,ry=0;
+document.addEventListener('mousemove', e => { mx=e.clientX; my=e.clientY; });
+(function animCursor(){
+  rx+=(mx-rx)*0.12; ry+=(my-ry)*0.12;
+  cur.style.left=mx+'px'; cur.style.top=my+'px';
+  ring.style.left=rx+'px'; ring.style.top=ry+'px';
+  requestAnimationFrame(animCursor);
+})();
+
+/* ---- Scroll reveal ---- */
+const obs = new IntersectionObserver(entries => {
+  entries.forEach(e => { if(e.isIntersecting) e.target.classList.add('visible'); });
+}, { threshold: 0.12 });
+document.querySelectorAll('.scroll-reveal').forEach(el => obs.observe(el));
+
+/* ---- Copy code ---- */
+function copyCode(btn) {
+  const code = document.getElementById('code-block').innerText;
+  navigator.clipboard.writeText(code).then(() => {
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy Code', 2000);
+  });
+}
+
+/* ---- Hero tracker canvas ---- */
+(function(){
+  const c = document.getElementById('tracker-canvas');
+  if(!c) return;
+  const ctx = c.getContext('2d');
+  let t = 0, panAngle = 0, tiltAngle = 45, sunAz = 180, sunEl = 40;
+
+  function getSun(h) {
+    const frac = (h-6)/12;
+    if(frac<0||frac>1) return {az:180,el:-10};
+    return {az:90+frac*180, el:Math.sin(frac*Math.PI)*72};
+  }
+
+  function draw() {
+    const W=480,H=480;
+    ctx.clearRect(0,0,W,H);
+
+    // BG
+    ctx.fillStyle='#060a0f';
+    ctx.fillRect(0,0,W,H);
+
+    // Grid
+    ctx.strokeStyle='#ffffff06';
+    ctx.lineWidth=1;
+    for(let x=0;x<W;x+=40){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+    for(let y=0;y<H;y+=40){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+
+    // Horizon circle
+    ctx.strokeStyle='#f59e0b15';
+    ctx.lineWidth=1;
+    ctx.beginPath();ctx.arc(240,270,160,0,Math.PI*2);ctx.stroke();
+
+    // Compass ticks
+    ['N','E','S','W'].forEach((d,i)=>{
+      const a=i*Math.PI/2;
+      const tx=240+Math.sin(a)*175, ty=270-Math.cos(a)*175;
+      ctx.fillStyle='#f59e0b50';
+      ctx.font='11px Space Mono,monospace';
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(d,tx,ty);
+    });
+
+    // Sun
+    const normAz=(sunAz-90)/180;
+    const sx=80+normAz*320, sy=240-Math.max(0,sunEl)/72*180;
+    if(sunEl>0){
+      const grd=ctx.createRadialGradient(sx,sy,0,sx,sy,50);
+      grd.addColorStop(0,'rgba(251,191,36,0.25)');
+      grd.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.fillStyle=grd;
+      ctx.beginPath();ctx.arc(sx,sy,50,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle='#fbbf24';
+      ctx.beginPath();ctx.arc(sx,sy,12,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle='#fef3c7';
+      ctx.beginPath();ctx.arc(sx,sy,7,0,Math.PI*2);ctx.fill();
+
+      // Ray to panel
+      ctx.save();
+      ctx.globalAlpha=0.06;
+      ctx.strokeStyle='#f59e0b';
+      ctx.lineWidth=20;
+      ctx.beginPath();ctx.moveTo(sx,sy);ctx.lineTo(240,300);ctx.stroke();
+      ctx.restore();
+    }
+
+    // Panel (simplified 3D)
+    ctx.save();
+    ctx.translate(240,300);
+    const pan=panAngle*Math.PI/180;
+    const tilt=tiltAngle*Math.PI/180;
+    const proj=Math.cos(tilt);
+    const pW=100,pH=70;
+
+    // Arm
+    ctx.strokeStyle='#e5e7eb';
+    ctx.lineWidth=10;
+    ctx.lineCap='round';
+    ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(Math.sin(pan)*10,-50);ctx.stroke();
+
+    ctx.translate(Math.sin(pan)*10,-50);
+
+    // Panel face
+    const pGrad=ctx.createLinearGradient(-pW/2,-pH*proj/2,pW/2,pH*proj/2);
+    pGrad.addColorStop(0,'#0a1a2a');
+    pGrad.addColorStop(1,'#0f2035');
+    ctx.fillStyle=pGrad;
+    ctx.beginPath();
+    ctx.moveTo(-pW/2,-pH*proj/2);
+    ctx.lineTo(pW/2,-pH*proj/2);
+    ctx.lineTo(pW/2,pH*proj/2);
+    ctx.lineTo(-pW/2,pH*proj/2);
+    ctx.closePath();
+    ctx.fill();
+
+    // Cell grid
+    ctx.strokeStyle='#1a3050';ctx.lineWidth=0.8;
+    for(let i=1;i<4;i++){
+      const x=-pW/2+(i/4)*pW;
+      ctx.beginPath();ctx.moveTo(x,-pH*proj/2);ctx.lineTo(x,pH*proj/2);ctx.stroke();
+    }
+    for(let i=1;i<3;i++){
+      const y=-pH*proj/2+(i/3)*pH*proj;
+      ctx.beginPath();ctx.moveTo(-pW/2,y);ctx.lineTo(pW/2,y);ctx.stroke();
+    }
+
+    // Sun alignment glow
+    const align=sunEl>0?Math.max(0,Math.cos((panAngle-(sunAz-180))*Math.PI/180)*0.8):0;
+    if(align>0.1){
+      const sheen=ctx.createRadialGradient(0,0,0,0,0,60);
+      sheen.addColorStop(0,`rgba(100,200,255,${align*0.3})`);
+      sheen.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.fillStyle=sheen;
+      ctx.fillRect(-pW/2,-pH*proj/2,pW,pH*proj);
+    }
+
+    ctx.strokeStyle='#ffffff15';ctx.lineWidth=1;
+    ctx.strokeRect(-pW/2,-pH*proj/2,pW,pH*proj);
+    ctx.restore();
+
+    // LDR labels
+    ctx.font='10px Space Mono,monospace';
+    ctx.textAlign='left';
+    ctx.fillStyle='#f59e0b80';
+    ctx.fillText('PAN '+Math.round(panAngle)+'°',16,440);
+    ctx.fillText('TILT '+Math.round(tiltAngle)+'°',16,456);
+    const pwr=sunEl>0?Math.max(0,Math.cos((panAngle-(sunAz-180))*Math.PI/180))*2.8:0;
+    ctx.fillStyle='#2dd4bf80';
+    ctx.textAlign='right';
+    ctx.fillText(pwr.toFixed(2)+'W',464,440);
+    ctx.fillText('EFF '+Math.round(pwr/2.8*100)+'%',464,456);
+  }
+
+  function update(dt) {
+    t+=dt;
+    const hour=8+(t*0.5)%12;
+    const sun=getSun(hour);
+    sunAz=sun.az; sunEl=Math.max(0,sun.el);
+    const targetPan=sunAz-180;
+    const targetTilt=Math.max(10,Math.min(80,sunEl));
+    panAngle+=(targetPan-panAngle)*0.02;
+    tiltAngle+=(targetTilt-tiltAngle)*0.02;
+  }
+
+  let last=0;
+  (function loop(ts){
+    update((ts-last)/1000); last=ts;
+    draw();
+    requestAnimationFrame(loop);
+  })(0);
+})();
+
+/* ---- Mini canvas (simulation section) ---- */
+(function(){
+  const c = document.getElementById('mini-canvas');
+  if(!c) return;
+  const ctx = c.getContext('2d');
+  let t=0,panA=0,tiltA=45,sunAz=180,sunEl=40;
+  const statEl=document.getElementById('mini-status');
+
+  function getSun(h){
+    const f=(h-6)/12;
+    if(f<0||f>1)return{az:180,el:-10};
+    return{az:90+f*180,el:Math.sin(f*Math.PI)*72};
+  }
+
+  function draw(){
+    const W=260,H=260;
+    ctx.clearRect(0,0,W,H);
+    ctx.fillStyle='#050a02';
+    ctx.fillRect(0,0,W,H);
+
+    ctx.strokeStyle='#00ff0808';ctx.lineWidth=0.5;
+    for(let x=0;x<W;x+=20){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+    for(let y=0;y<H;y+=20){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+
+    const normAz=(sunAz-90)/180;
+    const sx=30+normAz*200,sy=150-Math.max(0,sunEl)/72*110;
+    if(sunEl>0){
+      const g=ctx.createRadialGradient(sx,sy,0,sx,sy,30);
+      g.addColorStop(0,'rgba(251,191,36,0.3)');g.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.fillStyle=g;ctx.beginPath();ctx.arc(sx,sy,30,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle='#fbbf24';ctx.beginPath();ctx.arc(sx,sy,7,0,Math.PI*2);ctx.fill();
+    }
+
+    ctx.save();ctx.translate(130,180);
+    ctx.strokeStyle='#e5e7eb';ctx.lineWidth=6;ctx.lineCap='round';
+    ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(0,-30);ctx.stroke();
+    ctx.translate(0,-30);
+    const proj=Math.cos(tiltA*Math.PI/180);
+    const pW=55,pH=38;
+    ctx.fillStyle='#0f2035';
+    ctx.fillRect(-pW/2,-pH*proj/2,pW,pH*proj);
+    ctx.strokeStyle='#1a3050';ctx.lineWidth=0.5;
+    ctx.strokeRect(-pW/2,-pH*proj/2,pW,pH*proj);
+    ctx.restore();
+
+    ctx.fillStyle='#f59e0b80';
+    ctx.font='9px Space Mono,monospace';
+    ctx.textAlign='left';
+    ctx.fillText('PAN '+Math.round(panA)+'°',8,H-18);
+    ctx.fillText('TILT '+Math.round(tiltA)+'°',8,H-6);
+    const pwr=sunEl>0?Math.max(0,Math.cos((panA-(sunAz-180))*Math.PI/180))*2.8:0;
+    ctx.fillStyle='#2dd4bf80';
+    ctx.textAlign='right';
+    ctx.fillText(pwr.toFixed(2)+'W',W-8,H-18);
+  }
+
+  function update(dt){
+    t+=dt;
+    const hour=8+(t*0.4)%12;
+    const sun=getSun(hour);
+    sunAz=sun.az;sunEl=Math.max(0,sun.el);
+    panA+=(sunAz-180-panA)*0.02;
+    tiltA+=(Math.max(10,Math.min(80,sunEl))-tiltA)*0.02;
+    if(statEl){
+      const h=Math.floor(8+(t*0.4)%12);
+      const m=Math.floor(((t*0.4)%1)*60);
+      statEl.textContent=`● AUTO — ${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')} IST`;
+    }
+  }
+
+  let last=0;
+  (function loop(ts){
+    update((ts-last)/1000);last=ts;
+    draw();
+    requestAnimationFrame(loop);
+  })(0);
+})();
+</script>
+</body>
+</html>
